@@ -1,6 +1,12 @@
 # TensorFlow分布式MNIST手写字体识别实例
- 
+
+该例子是TF的入门实例手写字体识别MNIST基于分布式的实现，代码都加了中文注释。更加通俗易懂，下面讲解TensorFlow分布式原理。
+
+
+## TF分布式原理
 TF的实现分为了单机实现和分布式实现，在分布式实现中，需要实现的是对client，master，worker process不在同一台机器上时的支持。数据量很大的情况下，单机跑深度学习程序，过于耗时，所以需要TensorFlow分布式并行。
+
+![单机与分布式结构](https://github.com/TracyMcgrady6/Distribute_MNIST/blob/master/4.png)
 
 ## Single-Device Execution
 构建好图后，使用拓扑算法来决定执行哪一个节点，即对每个节点使用一个计数，值表示所依赖的未完成的节点数目，当一个节点的运算完成时，将依赖该节点的所有节点的计数减一。如果节点的计数为0，将其放入准备队列待执行。
@@ -87,147 +93,3 @@ Between-graph模式下，训练的参数保存在参数服务器， 数据不用
 ##实例
 
 >tensorflow官方有个分布式tensorflow的文档，但是例子没有完整的代码， 这里写了一个最简单的可以跑起来的例子，供大家参考，这里也傻瓜式给大家解释一下代码，以便更加通俗的理解。
-
-### 说明
-
-```
-这是一个最简单的分布式tensorflow的例子。
-
-实现的功能是估计这个公式的2个参数：  Y = 2 * X + 10
-
-要估计的参数是weight是2， biasis 是10.
-
-程序执行的ps节点1个， worker节点2个。 执行命令示例在下面。
-
-详细关于tensorflow的分布式示例介绍：
-```
-### 执行命令示例
-
-ps 节点执行： 
-
-```
-CUDA_VISIBLE_DEVICES='' python distribute.py --ps_hosts=192.168.100.42:2222 --worker_hosts=192.168.100.42:2224,192.168.100.253:2225 --job_name=ps --task_index=0
-```
-
-
-
-worker 节点执行:
-
-
-```
-CUDA_VISIBLE_DEVICES=0 python distribute.py --ps_hosts=192.168.100.42:2222 --worker_hosts=192.168.100.42:2224,192.168.100.253:2225 --job_name=worker --task_index=0
-
-CUDA_VISIBLE_DEVICES=0 python distribute.py --ps_hosts=192.168.100.42:2222 --worker_hosts=192.168.100.42:2224,192.168.100.253:2225 --job_name=worker --task_index=1
-```
-
-###实验代码
-
-```python
-#coding=utf-8
-import numpy as np
-import tensorflow as tf
-
-# Define parameters
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_float('learning_rate', 0.00003, 'Initial learning rate.')
-tf.app.flags.DEFINE_integer('steps_to_validate', 1000,
-                     'Steps to validate and print loss')
-
-# For distributed
-tf.app.flags.DEFINE_string("ps_hosts", "",
-                           "Comma-separated list of hostname:port pairs")
-tf.app.flags.DEFINE_string("worker_hosts", "",
-                           "Comma-separated list of hostname:port pairs")
-tf.app.flags.DEFINE_string("job_name", "", "One of 'ps', 'worker'")
-tf.app.flags.DEFINE_integer("task_index", 0, "Index of task within the job")
-tf.app.flags.DEFINE_integer("issync", 0, "是否采用分布式的同步模式，1表示同步模式，0表示异步模式")
-
-# Hyperparameters
-learning_rate = FLAGS.learning_rate
-steps_to_validate = FLAGS.steps_to_validate
-
-def main(_):
-  ps_hosts = FLAGS.ps_hosts.split(",")
-  worker_hosts = FLAGS.worker_hosts.split(",")
-  cluster = tf.train.ClusterSpec({"ps": ps_hosts, "worker": worker_hosts})
-  server = tf.train.Server(cluster,job_name=FLAGS.job_name,task_index=FLAGS.task_index)
-
-  issync = FLAGS.issync
-  if FLAGS.job_name == "ps":
-    server.join()
-  elif FLAGS.job_name == "worker":
-    with tf.device(tf.train.replica_device_setter(
-                    worker_device="/job:worker/task:%d" % FLAGS.task_index,
-                    cluster=cluster)):
-      global_step = tf.Variable(0, name='global_step', trainable=False)
-
-      input = tf.placeholder("float")
-      label = tf.placeholder("float")
-
-      weight = tf.get_variable("weight", [1], tf.float32, initializer=tf.random_normal_initializer())
-      biase  = tf.get_variable("biase", [1], tf.float32, initializer=tf.random_normal_initializer())
-      pred = tf.multiply(input, weight) + biase
-
-      loss_value = loss(label, pred)
-      optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-
-      grads_and_vars = optimizer.compute_gradients(loss_value)
-      if issync == 1:
-        #同步模式计算更新梯度
-        rep_op = tf.train.SyncReplicasOptimizer(optimizer,
-                                                replicas_to_aggregate=len(
-                                                  worker_hosts),
-                                                replica_id=FLAGS.task_index,
-                                                total_num_replicas=len(
-                                                  worker_hosts),
-                                                use_locking=True)
-        train_op = rep_op.apply_gradients(grads_and_vars,
-                                       global_step=global_step)
-        init_token_op = rep_op.get_init_tokens_op()
-        chief_queue_runner = rep_op.get_chief_queue_runner()
-      else:
-        #异步模式计算更新梯度
-        train_op = optimizer.apply_gradients(grads_and_vars,
-                                       global_step=global_step)
-
-
-      init_op = tf.initialize_all_variables()
-      
-      saver = tf.train.Saver()
-      tf.summary.scalar('cost', loss_value)
-      summary_op = tf.summary.merge_all()
- 
-    sv = tf.train.Supervisor(is_chief=(FLAGS.task_index == 0),
-                            logdir="./checkpoint/",
-                            init_op=init_op,
-                            summary_op=None,
-                            saver=saver,
-                            global_step=global_step,
-                            save_model_secs=60)
-
-    with sv.prepare_or_wait_for_session(server.target) as sess:
-      # 如果是同步模式
-      if FLAGS.task_index == 0 and issync == 1:
-        sv.start_queue_runners(sess, [chief_queue_runner])
-        sess.run(init_token_op)
-      step = 0
-      while  step < 1000000:
-        train_x = np.random.randn(1)
-        train_y = 2 * train_x + np.random.randn(1) * 0.33  + 10
-        _, loss_v, step = sess.run([train_op, loss_value,global_step], feed_dict={input:train_x, label:train_y})
-        if step % steps_to_validate == 0:
-          w,b = sess.run([weight,biase])
-          print("step: %d, weight: %f, biase: %f, loss: %f" %(step, w, b, loss_v))
-
-    sv.stop()
-
-def loss(label, pred):
-  return tf.square(label - pred)
-
-
-
-if __name__ == "__main__":
-  tf.app.run()
-```
-
-
