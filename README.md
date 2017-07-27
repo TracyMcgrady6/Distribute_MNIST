@@ -1,7 +1,31 @@
 # TensorFlow分布式MNIST手写字体识别实例
 
-该例子是TF的入门实例手写字体识别MNIST基于分布式的实现，代码都加了中文注释。更加通俗易懂，下面讲解TensorFlow分布式原理。
+## 代码运行步骤
+ps 节点执行： 
 
+```
+python distributed.py --job_name=ps --task_index=0
+```
+
+worker1 节点执行：
+
+```
+python distributed.py --job_name=worker --task_index=0
+```
+
+worker2 节点执行：
+
+```
+python distributed.py --job_name=worker --task_index=1
+```
+
+## 运行结果
+#### worker0节点运行结果
+![分布式TF运行结果worker1](https://github.com/TracyMcgrady6/Distribute_MNIST/blob/master/屏幕快照%202017-07-27%20下午5.12.07.png)
+#### worker1节点运行结果
+![分布式TF运行结果worker1](https://github.com/TracyMcgrady6/Distribute_MNIST/blob/master/屏幕快照%202017-07-27%20下午5.13.16.png)
+
+该例子是TF的入门实例手写字体识别MNIST基于分布式的实现，代码都加了中文注释。更加通俗易懂，下面讲解TensorFlow分布式原理。
 
 ## TF分布式原理
 TF的实现分为了单机实现和分布式实现，在分布式实现中，需要实现的是对client，master，worker process不在同一台机器上时的支持。数据量很大的情况下，单机跑深度学习程序，过于耗时，所以需要TensorFlow分布式并行。
@@ -90,6 +114,5 @@ Between-graph模式下，训练的参数保存在参数服务器， 数据不用
 
 在数据量小的情况下， 各个节点的计算能力比较均衡的情况下， 推荐使用同步模式；数据量很大，各个机器的计算性能掺差不齐的情况下，推荐使用异步的方式。
 
-##实例
-
->tensorflow官方有个分布式tensorflow的文档，但是例子没有完整的代码， 这里写了一个最简单的可以跑起来的例子，供大家参考，这里也傻瓜式给大家解释一下代码，以便更加通俗的理解。
+## 实例
+tensorflow官方有个分布式tensorflow的文档，但是例子没有完整的代码， 这里写了一个最简单的可以跑起来的例子，供大家参考，这里也傻瓜式给大家解释一下代码，以便更加通俗的理解。
